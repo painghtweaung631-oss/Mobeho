@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import threading
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -11,12 +12,26 @@ from telegram.error import RetryAfter, Forbidden, BadRequest
 # ================= CONFIG =================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
+JSONBIN_ID = os.environ.get("JSONBIN_ID", "")
+JSONBIN_KEY = os.environ.get("JSONBIN_KEY", "")
 DATA_FILE = "texts.json"
 
 active_tasks = {}
 
-# ================= DATA STORAGE =================
+# ================= CLOUD + LOCAL DATA STORAGE =================
 def load_texts():
+    if JSONBIN_ID and JSONBIN_KEY:
+        try:
+            url = f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}/latest"
+            headers = {"X-Master-Key": JSONBIN_KEY}
+            res = requests.get(url, headers=headers, timeout=8)
+            if res.status_code == 200:
+                data = res.json().get("record", [])
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -28,6 +43,17 @@ def load_texts():
 def save_texts(texts):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(texts, f, ensure_ascii=False, indent=2)
+
+    if JSONBIN_ID and JSONBIN_KEY:
+        try:
+            url = f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}"
+            headers = {
+                "Content-Type": "application/json",
+                "X-Master-Key": JSONBIN_KEY
+            }
+            requests.put(url, json=texts, headers=headers, timeout=8)
+        except Exception:
+            pass
 
 # ================= OWNER CHECK =================
 def is_owner(update: Update) -> bool:
@@ -138,9 +164,11 @@ async def cmd_removetext(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def spam_loop(chat_id: int, target_id: int, target_name: str, context: ContextTypes.DEFAULT_TYPE):
     index = 0
     mention = f'<a href="tg://user?id={target_id}">{target_name}</a>'
+    texts = load_texts()
 
     while True:
-        texts = load_texts()
+        if index % len(texts) == 0:
+            texts = load_texts()
         if not texts:
             texts = ["ဟေ့"]
 
