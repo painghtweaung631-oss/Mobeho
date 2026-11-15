@@ -585,7 +585,6 @@ async def cmd_removetext(update: Update, context: ContextTypes.DEFAULT_TYPE):
     removed = texts.pop(idx)
     save_texts(texts)
     await send_tracked_reply(update, f"Removed: {removed}")
-
     async def cmd_removealltext(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_access(update):
         return
