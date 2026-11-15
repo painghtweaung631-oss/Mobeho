@@ -1,9 +1,6 @@
 import os
-import sys
 import json
-import time
 import asyncio
-import subprocess
 import threading
 from datetime import datetime, timezone, timedelta
 import requests
@@ -12,13 +9,6 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 from telegram.error import RetryAfter, Forbidden, BadRequest
-
-# Auto-install pytz if not present
-try:
-    import pytz
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pytz"])
-    import pytz
 
 # ================= CONFIG =================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -33,19 +23,21 @@ hourly_quote_cache = {"hour_key": None, "text": None}
 
 DEFAULT_TEXTS = ["ဘာတွေလုပ်နေလဲ", "စားပြီးပြီလား"]
 
-# ================= SOUTHEAST ASIA TIMEZONES =================
+# ================= SOUTHEAST ASIA TIMEZONES (BUILT-IN UTC OFFSETS) =================
+MM_TZ = timezone(timedelta(hours=6, minutes=30))
+
 SEA_COUNTRIES = [
-    ("🇲🇲 Myanmar", "Asia/Yangon"),
-    ("🇹🇭 Thailand", "Asia/Bangkok"),
-    ("🇱🇦 Laos", "Asia/Vientiane"),
-    ("🇰🇭 Cambodia", "Asia/Phnom_Penh"),
-    ("🇻🇳 Vietnam", "Asia/Ho_Chi_Minh"),
-    ("🇲🇾 Malaysia", "Asia/Kuala_Lumpur"),
-    ("🇸🇬 Singapore", "Asia/Singapore"),
-    ("🇮🇩 Indonesia (WIB)", "Asia/Jakarta"),
-    ("🇧🇳 Brunei", "Asia/Brunei"),
-    ("🇵🇭 Philippines", "Asia/Manila"),
-    ("🇹🇱 Timor-Leste", "Asia/Dili"),
+    ("🇲🇲 Myanmar", timezone(timedelta(hours=6, minutes=30))),
+    ("🇹🇭 Thailand", timezone(timedelta(hours=7))),
+    ("🇱🇦 Laos", timezone(timedelta(hours=7))),
+    ("🇰🇭 Cambodia", timezone(timedelta(hours=7))),
+    ("🇻🇳 Vietnam", timezone(timedelta(hours=7))),
+    ("🇮🇩 Indonesia (WIB)", timezone(timedelta(hours=7))),
+    ("🇲🇾 Malaysia", timezone(timedelta(hours=8))),
+    ("🇸🇬 Singapore", timezone(timedelta(hours=8))),
+    ("🇧🇳 Brunei", timezone(timedelta(hours=8))),
+    ("🇵🇭 Philippines", timezone(timedelta(hours=8))),
+    ("🇹🇱 Timor-Leste", timezone(timedelta(hours=9))),
 ]
 
 # ================= GLOBAL & NATIONAL EVENTS DATABASE =================
@@ -98,9 +90,6 @@ FIXED_EVENTS = {
     ],
     "05-01": [
         "🌍 Global: International Workers' Day / Labour Day (ကမ္ဘာ့အလုပ်သမားနေ့)"
-    ],
-    "05-10": [
-        "🌍 Global: World Lupus Day & Mother's Day (အမေများနေ့ - မေလ ဒုတိယပတ် တနင်္ဂနွေ)"
     ],
     "05-31": [
         "🌍 Global: World No Tobacco Day (ကမ္ဘာ့ဆေးလိပ်မသောက်ရေးနေ့)"
@@ -337,8 +326,8 @@ async def cmd_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_access(update):
         return
 
-    now_utc = datetime.now(pytz.utc)
-    mm_now = now_utc.astimezone(pytz.timezone("Asia/Yangon"))
+    now_utc = datetime.now(timezone.utc)
+    mm_now = now_utc.astimezone(MM_TZ)
     date_header = mm_now.strftime("%d %b %Y (%A)")
 
     lines = [
@@ -346,8 +335,7 @@ async def cmd_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📅 `{date_header}`\n"
     ]
 
-    for country_label, tz_name in SEA_COUNTRIES:
-        tz = pytz.timezone(tz_name)
+    for country_label, tz in SEA_COUNTRIES:
         local_dt = now_utc.astimezone(tz)
         time_str = local_dt.strftime("%I:%M:%S %p")
         lines.append(f"• {country_label}: `{time_str}`")
@@ -374,11 +362,10 @@ async def cmd_gevent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_access(update):
         return
 
-    mm_now = datetime.now(pytz.timezone("Asia/Yangon"))
+    mm_now = datetime.now(MM_TZ)
     target_month = mm_now.month
     target_day = mm_now.day
 
-    # /gevent 19-07 လိုမျိုး နေ့စွဲထည့်ရှာပါက ရှာပေးမည်
     if context.args:
         arg = context.args[0].replace("/", "-")
         parts = arg.split("-")
@@ -392,7 +379,6 @@ async def cmd_gevent(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     events = list(FIXED_EVENTS.get(mm_dd, []))
 
-    # Mother's Day (2nd Sunday of May) & Father's Day (3rd Sunday of June) dynamic calculation
     if target_month == 5:
         first_day = datetime(mm_now.year, 5, 1)
         second_sunday = 1 + (6 - first_day.weekday()) % 7 + 7
@@ -404,7 +390,6 @@ async def cmd_gevent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if target_day == third_sunday:
             events.insert(0, "🌍 Global: International Father's Day (အပြည်ပြည်ဆိုင်ရာ အဖေများနေ့)")
 
-    # Fetch live international observances from Wikipedia API
     wiki_events = await asyncio.to_thread(fetch_live_wiki_holidays, target_month, target_day)
     for w in wiki_events:
         if not any(w.lower()[3:15] in e.lower() for e in events):
@@ -422,13 +407,12 @@ async def cmd_gevent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_tracked_reply(update, header + body + footer, parse_mode=ParseMode.MARKDOWN)
 
 def get_hourly_quote() -> tuple:
-    mm_now = datetime.now(pytz.timezone("Asia/Yangon"))
+    mm_now = datetime.now(MM_TZ)
     hour_key = mm_now.strftime("%Y-%m-%d-%H")
 
     if hourly_quote_cache["hour_key"] == hour_key and hourly_quote_cache["text"]:
         return hourly_quote_cache["text"], mm_now
 
-    # Live API မှ Quote အသစ် ဆွဲယူမည်
     quote_tuple = None
     try:
         res = requests.get("https://zenquotes.io/api/random", timeout=6)
@@ -551,3 +535,12 @@ async def cmd_listtext(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_tracked_reply(update, "စာသားတစ်ခုမှ မရှိသေးပါဘူး။ `/addtext` နဲ့ ထည့်ပါ။", parse_mode=ParseMode.MARKDOWN)
         return
 
+    lines = [f"{i}. {t}" for i, t in enumerate(texts, start=1)]
+    await send_tracked_reply(update, "📝 **သိမ်းထားသော စာသားများ:**\n" + "\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+async def cmd_edittext(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_access(update):
+        return
+
+    if len(context.args) < 2 or not context.args[0].isdigit():
+        await send_tracked_reply(update, "ပုံစံမှားနေပါတယ်။\nဥပမာ: `/edittext
