@@ -16,14 +16,15 @@ OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
 JSONBIN_ID = os.environ.get("JSONBIN_ID", "")
 JSONBIN_KEY = os.environ.get("JSONBIN_KEY", "")
 DATA_FILE = "bot_data.json"
+NL = chr(10)
 
 active_tasks = {}
-sent_messages = {}  # {chat_id: [message_id, ...]}
+sent_messages = {}
 hourly_quote_cache = {"hour_key": None, "text": None}
 
 DEFAULT_TEXTS = ["ဘာတွေလုပ်နေလဲ", "စားပြီးပြီလား"]
 
-# ================= SOUTHEAST ASIA TIMEZONES (BUILT-IN UTC OFFSETS) =================
+# ================= SOUTHEAST ASIA TIMEZONES =================
 MM_TZ = timezone(timedelta(hours=6, minutes=30))
 
 SEA_COUNTRIES = [
@@ -321,7 +322,7 @@ def estimate_creation_year(user_id: int) -> str:
     else:
         return "2025 - 2026 (ခန့်မှန်းခြေ)"
 
-# ================= NEW LIVE UTILITY COMMANDS (/time, /gevent, /qtoday) =================
+# ================= LIVE UTILITY COMMANDS (/time, /gevent, /qtoday) =================
 async def cmd_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_access(update):
         return
@@ -331,8 +332,9 @@ async def cmd_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     date_header = mm_now.strftime("%d %b %Y (%A)")
 
     lines = [
-        f"🕒 **Southeast Asia Live Time**",
-        f"📅 `{date_header}`\n"
+        "🕒 **Southeast Asia Live Time**",
+        f"📅 `{date_header}`",
+        ""
     ]
 
     for country_label, tz in SEA_COUNTRIES:
@@ -340,7 +342,7 @@ async def cmd_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         time_str = local_dt.strftime("%I:%M:%S %p")
         lines.append(f"• {country_label}: `{time_str}`")
 
-    await send_tracked_reply(update, "\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await send_tracked_reply(update, NL.join(lines), parse_mode=ParseMode.MARKDOWN)
 
 def fetch_live_wiki_holidays(month: int, day: int) -> list:
     results = []
@@ -398,13 +400,15 @@ async def cmd_gevent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not events:
         events.append("• ဒီနေ့အတွက် သီးသန့်မှတ်တမ်းတင်ထားသော နေ့ထူးနေ့မြတ် မရှိပါ။")
 
-    header = (
-        f"📅 **Global & National Events**\n"
-        f"🗓️ **Date:** `{display_date}`\n\n"
-    )
-    body = "\n".join(events)
-    footer = "\n\n💡 _အခြားရက်ကြည့်ရန်:_ `/gevent 19-07`"
-    await send_tracked_reply(update, header + body + footer, parse_mode=ParseMode.MARKDOWN)
+    out = [
+        "📅 **Global & National Events**",
+        f"🗓️ **Date:** `{display_date}`",
+        "",
+        NL.join(events),
+        "",
+        "💡 _အခြားရက်ကြည့်ရန်:_ `/gevent 19-07`"
+    ]
+    await send_tracked_reply(update, NL.join(out), parse_mode=ParseMode.MARKDOWN)
 
 def get_hourly_quote() -> tuple:
     mm_now = datetime.now(MM_TZ)
@@ -442,13 +446,15 @@ async def cmd_qtoday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hour_label = mm_now.strftime("%I:00 %p")
     next_hour = (mm_now + timedelta(hours=1)).strftime("%I:00 %p")
 
-    msg = (
-        f"💬 **Quote of the Hour** (`{hour_label}`)\n\n"
-        f"“_{quote_text}_”\n"
-        f"— **{author}**\n\n"
+    out = [
+        f"💬 **Quote of the Hour** (`{hour_label}`)",
+        "",
+        f"“_{quote_text}_”",
+        f"— **{author}**",
+        "",
         f"🔄 _Next live update at `{next_hour}` (MMT)_"
-    )
-    await send_tracked_reply(update, msg, parse_mode=ParseMode.MARKDOWN)
+    ]
+    await send_tracked_reply(update, NL.join(out), parse_mode=ParseMode.MARKDOWN)
 
 # ================= PERMIT COMMANDS (OWNER ONLY) =================
 async def cmd_apermit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -462,7 +468,8 @@ async def cmd_apermit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = update.message.reply_to_message.from_user.id
 
     if not target_id:
-        await send_tracked_reply(update, "User ID ထည့်ပါ (သို့) User စာကို Reply ပြန်ပါ။\nဥပမာ: `/apermit 123456789`", parse_mode=ParseMode.MARKDOWN)
+        msg = "User ID ထည့်ပါ (သို့) User စာကို Reply ပြန်ပါ။" + NL + "ဥပမာ: `/apermit 123456789`"
+        await send_tracked_reply(update, msg, parse_mode=ParseMode.MARKDOWN)
         return
 
     permitted = load_permitted()
@@ -483,7 +490,8 @@ async def cmd_rmpermit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_id = update.message.reply_to_message.from_user.id
 
     if not target_id:
-        await send_tracked_reply(update, "User ID ထည့်ပါ (သို့) User စာကို Reply ပြန်ပါ။\nဥပမာ: `/rmpermit 123456789`", parse_mode=ParseMode.MARKDOWN)
+        msg = "User ID ထည့်ပါ (သို့) User စာကို Reply ပြန်ပါ။" + NL + "ဥပမာ: `/rmpermit 123456789`"
+        await send_tracked_reply(update, msg, parse_mode=ParseMode.MARKDOWN)
         return
 
     permitted = load_permitted()
@@ -503,13 +511,13 @@ async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = f"@{target.username}" if target.username else "မရှိပါ"
     est_year = estimate_creation_year(target.id)
 
-    info = (
-        f"👤 **User Info**\n"
-        f"• **Name:** {full_name}\n"
-        f"• **User ID:** `{target.id}`\n"
-        f"• **Username:** {username}\n"
+    info = NL.join([
+        "👤 **User Info**",
+        f"• **Name:** {full_name}",
+        f"• **User ID:** `{target.id}`",
+        f"• **Username:** {username}",
         f"• **Account Created:** {est_year}"
-    )
+    ])
     await send_tracked_reply(update, info, parse_mode=ParseMode.MARKDOWN)
 
 async def cmd_addtext(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -518,7 +526,8 @@ async def cmd_addtext(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     new_text = " ".join(context.args).strip()
     if not new_text:
-        await send_tracked_reply(update, "ထည့်ချင်တဲ့ စာသားပါ တစ်ခါတည်း ရိုက်ပါ။\nဥပမာ: `/addtext ဘာတွေလုပ်`", parse_mode=ParseMode.MARKDOWN)
+        msg = "ထည့်ချင်တဲ့ စာသားပါ တစ်ခါတည်း ရိုက်ပါ။" + NL + "ဥပမာ: `/addtext ဘာတွေလုပ်`"
+        await send_tracked_reply(update, msg, parse_mode=ParseMode.MARKDOWN)
         return
 
     texts = load_texts()
@@ -536,11 +545,11 @@ async def cmd_listtext(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     lines = [f"{i}. {t}" for i, t in enumerate(texts, start=1)]
-    await send_tracked_reply(update, "📝 **သိမ်းထားသော စာသားများ:**\n" + "\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await send_tracked_reply(update, "📝 **သိမ်းထားသော စာသားများ:**" + NL + NL.join(lines), parse_mode=ParseMode.MARKDOWN)
 
 async def cmd_edittext(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_access(update):
         return
 
     if len(context.args) < 2 or not context.args[0].isdigit():
-        await send_tracked_reply(update, "ပုံစံမှားနေပါတယ်။\nဥပမာ: `/edittext
+        msg =
