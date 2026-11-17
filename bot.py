@@ -2029,7 +2029,7 @@ def main():
 
     # Callbacks, Join Events & General Listener
     application.add_handler(CallbackQueryHandler(callback_router))
-    application.add_handler(MessageHandler(filters.StatusUpdate.new_chat_members, new_member_handler))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general_message_handler))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
